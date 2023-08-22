@@ -1,21 +1,5 @@
 /******************************************************************************
-  Example_08_I2S_Passthrough.ino
-  Demonstrates reading I2S audio from the ADC, and passing that back to the DAC.
   
-  This example sets up analog audio input (on INPUT1s), ADC/DAC enabled as I2S 
-  peripheral, sets volume control, and Headphone output on the WM8960 Codec.
-
-  Audio should be connected to both the left and right "INPUT1" inputs, 
-  they are labeled "RIN1" and "LIN1" on the board.
-
-  This example will pass your audio source through the mixers and gain stages of 
-  the codec into the ADC. Read the audio from the ADC via I2S. Then send audio 
-  immediately back to the DAC via I2S. Then send the output of the DAC to the 
-  headphone outs.
-
-  Development platform used:
-  SparkFun ESP32 IoT RedBoard v10
-
   HARDWARE CONNECTIONS
 
   **********************
@@ -43,51 +27,10 @@
   OUT3 --------- TRS OUTPUT SLEEVE          *buffered "vmid" (aka "HP GND")
   HPL ---------- TRS OUTPUT TIP             *left HP output
   HPR ---------- TRS OUTPUT RING1           *right HP output
-
-  You can now control the volume of the codecs built in headphone amp using this 
-  fuction:
-
-  codec.setHeadphoneVolumeDB(6.00); Valid inputs are -74.00 (MUTE) up to +6.00, 
-  (1.00dB steps).
-
-  Pete Lewis @ SparkFun Electronics
-  October 14th, 2022
-  https://github.com/sparkfun/SparkFun_WM8960_Arduino_Library
-  
-  This code was created using some code by Mike Grusin at SparkFun Electronics
-  Included with the LilyPad MP3 example code found here:
-  Revision history: version 1.0 2012/07/24 MDG Initial release
-  https://github.com/sparkfun/LilyPad_MP3_Player
-
-  This code was created using some modified code from DroneBot Workshop.
-  Specifically, the I2S configuration setup was super helpful to get I2S working.
-  This example has a similar I2S config to what we are using here: Microphone to 
-  serial plotter example. Although, here we are doing a full duplex I2S port, in 
-  order to do reads and writes. To see the original Drone Workshop code and 
-  learn more about I2S in general, please visit:
-  https://dronebotworkshop.com/esp32-i2s/
-
-  Do you like this library? Help support SparkFun. Buy a board!
-
-    SparkFun Audio Codec Breakout - WM8960 (QWIIC)
-    https://www.sparkfun.com/products/21250
-	
-	All functions return 1 if the read/write was successful, and 0
-	if there was a communications failure. You can ignore the return value
-	if you just don't care anymore.
-
-	For information on the data sent to and received from the CODEC,
-	refer to the WM8960 datasheet at:
-	https://github.com/sparkfun/SparkFun_Audio_Codec_Breakout_WM8960/blob/main/Documents/WM8960_datasheet_v4.2.pdf
-  This code is released under the [MIT License](http://opensource.org/licenses/MIT).
-  Please review the LICENSE.md file included with this example. If you have any questions 
-  or concerns with licensing, please contact techsupport@sparkfun.com.
-  Distributed as-is; no warranty is given.
 ******************************************************************************/
 
 #include <Wire.h>
 #include <SparkFun_WM8960_Arduino_Library.h> 
-// Click here to get the library: http://librarymanager/All#SparkFun_WM8960
 WM8960 codec;
 
 // Include I2S driver
@@ -95,8 +38,8 @@ WM8960 codec;
 
 // Connections to I2S
 #define I2S_WS 25
-#define I2S_SD 18
-#define I2S_SDO 4
+#define I2S_SD 18 
+#define I2S_SDO 4 
 #define I2S_SCK 15
 
 // Use I2S Processor 0
@@ -106,10 +49,8 @@ WM8960 codec;
 #define bufferLen 64
 int16_t sBuffer[bufferLen];
 
-void setup()
-{
+void setup() {
   Serial.begin(115200);
-  Serial.println("Example 8 - I2S Passthough");
 
   Wire.begin();
 
@@ -120,7 +61,6 @@ void setup()
   }
   Serial.println("Device is connected properly.");
 
-  delay(1500);
   codec_setup();
 
   // Set up I2S
@@ -129,32 +69,60 @@ void setup()
   i2s_start(I2S_PORT);
 }
 
-#define thrsh 32600
+//distortion effect cuts off highest highs and lowest lows of the signal. Signal im getting from my guitar with no additional gain spans from ~ -
+void distortion(int16_t *buffer, int len) {
+  
+  //this is the value we will limit our signal to. All samples exceeding threshold will be set to its value.
+  const int threshold = 30000;
 
-const int threshold = thrsh;
+  for(int i = 0; i < len; i++) {
+    if(buffer[i] > threshold) 
+      buffer[i] = threshold;
+    else if(buffer[i] < -threshold) 
+      buffer[i] = -threshold;
+    Serial.println(buffer[i]);
+  }
+}
 
-const int negative_threshold = -(thrsh);
-int watch = -99999;
+int16_t *delay_buffer;
+int nRepeats = 3;
+int delay_time = 100; //100 ms of delay between repeats
+
+//delay makes an "echo" of our signal, repeating what we played after a fixed amount of time, a fixed amount of times
+void delay(int16_t *buffer, int len) {
+
+
+}
+
+
+int distortion_on = 1;
+int delay_on = 0;
+
 void loop()
 {
   // Get I2S data and place in data buffer
   size_t bytesIn = 0;
   size_t bytesOut = 0;
   esp_err_t result = i2s_read(I2S_PORT, &sBuffer, bufferLen, &bytesIn, portMAX_DELAY);
-
-  for(int i = 0; i < bufferLen; i++) {
-    if(sBuffer[i] > threshold)
-        sBuffer[i] = threshold;
-    else if(sBuffer[i] < negative_threshold)
-      sBuffer[i] = negative_threshold;
-    watch = sBuffer[i];
-    Serial.print(watch);
+  
+  if(distortion_on == 1) {
+    long int t1 = micros();
+    //distortion(sBuffer, bufferLen);
+    for(int i = 0; i < bufferLen; i++){
+      int watch_value = sBuffer[i];
+      Serial.println(watch_value);
+    }
+      
+    long int t2 = micros();
+    Serial.print("Time taken by the task: "); Serial.print(t2-t1); Serial.println(" microseconds");
+    distortion_on = 0;
   }
+  
+
+  //Printing to serial takes a lot of time :l
 
   if (result == ESP_OK)
   {
-
-
     // Send what we just received back to the codec
     esp_err_t result_w = i2s_write(I2S_PORT, &sBuffer, bytesIn, &bytesOut, portMAX_DELAY);
 
